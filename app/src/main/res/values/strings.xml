@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Stock Tracker</string>
+    <string name="search_hint">Search symbol or company…</string>
+    <string name="add_symbol_title">Add Symbol</string>
+    <string name="add_symbol_hint">e.g. AAPL</string>
+    <string name="empty_watchlist">Your watchlist is empty.\nTap + to add a symbol.</string>
+    <string name="remove_symbol">Remove</string>
+    <string name="menu_refresh">Refresh</string>
+    <string name="menu_add">Add Symbol</string>
+    <string name="menu_search">Search</string>
+</resources>
