@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react'
 import { DateTime } from 'luxon'
 import { getTimeZones } from '@vvo/tzdb'
 import { List, type RowComponentProps } from 'react-window'
@@ -82,6 +82,14 @@ const sections: Section[] = [
 
 const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
 
+function readUrlInitialState(): { zones: string[]; meeting: number; duration: number } {
+  const params = new URLSearchParams(window.location.search)
+  const zones = params.get('zones')?.split(',').filter(Boolean) ?? demoTimezones
+  const meeting = Number(params.get('meeting') ?? String(19 * 60 + 30))
+  const duration = Number(params.get('duration') ?? '60')
+  return { zones, meeting, duration }
+}
+
 function toFlag(countryCode: string): string {
   if (countryCode.length !== 2) return '🌐'
   return countryCode
@@ -111,7 +119,7 @@ function offsetToLabel(minutes: number): string {
   return `UTC${sign}${hh}${mm ? `:${String(mm).padStart(2, '0')}` : ''}`
 }
 
-function dayPhase(hour: number): { icon: JSX.Element; label: string } {
+function dayPhase(hour: number): { icon: ReactElement; label: string } {
   if (hour >= 5 && hour < 7) return { icon: <Sunrise size={14} />, label: 'Dawn' }
   if (hour >= 7 && hour < 17) return { icon: <Sun size={14} />, label: 'Day' }
   if (hour >= 17 && hour < 19) return { icon: <Sunset size={14} />, label: 'Sunset' }
@@ -193,15 +201,16 @@ const CountryRow = ({ index, style, rows, nowIso, format, showSeconds, workingBy
 }
 
 function App() {
+  const initial = readUrlInitialState()
   const [now, setNow] = useState(DateTime.now())
   const [theme, setTheme] = useState<ThemeMode>('system')
   const [timeFormat, setTimeFormat] = useState<TimeFormat>('24h')
   const [showSeconds, setShowSeconds] = useState(true)
   const [query, setQuery] = useState('')
   const [activeSection, setActiveSection] = useState<Section>('WORLD CLOCK')
-  const [selectedZones, setSelectedZones] = useState<string[]>(demoTimezones)
-  const [meetingMinutes, setMeetingMinutes] = useState(19 * 60 + 30)
-  const [meetingDuration, setMeetingDuration] = useState(60)
+  const [selectedZones, setSelectedZones] = useState<string[]>(initial.zones)
+  const [meetingMinutes, setMeetingMinutes] = useState(initial.meeting)
+  const [meetingDuration, setMeetingDuration] = useState(initial.duration)
   const [meetingDate, setMeetingDate] = useState(DateTime.now().toISODate() ?? '')
   const [preferredDays, setPreferredDays] = useState<string[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri'])
   const [globalWorkingStart, setGlobalWorkingStart] = useState('09:00')
@@ -253,16 +262,6 @@ function App() {
   }, [showSeconds])
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const zonesParam = params.get('zones')
-    const meetingParam = params.get('meeting')
-    const durationParam = params.get('duration')
-    if (zonesParam) setSelectedZones(zonesParam.split(',').filter(Boolean))
-    if (meetingParam) setMeetingMinutes(Number(meetingParam))
-    if (durationParam) setMeetingDuration(Number(durationParam))
-  }, [])
-
-  useEffect(() => {
     const resolvedDark = window.matchMedia('(prefers-color-scheme: dark)').matches
     const isDark = theme === 'dark' || (theme === 'system' && resolvedDark)
     document.documentElement.classList.toggle('dark', isDark)
@@ -298,10 +297,6 @@ function App() {
       const regionMatch = regionFilter === 'All' || item.region === regionFilter
       return baseMatch && offsetMatch && regionMatch
     })
-
-    if (normalizedQuery.includes('meeting between') || normalizedQuery.includes('best overlap')) setActiveSection('MEETING PLANNER')
-    if (normalizedQuery.includes(' in ') || normalizedQuery.includes('am') || normalizedQuery.includes('pm')) setActiveSection('TIME CONVERTER')
-
     return smartMatch
   }, [allLocations, normalizedQuery, queryOffset, regionFilter])
 
@@ -455,6 +450,23 @@ function App() {
     setCustomPresetName('')
   }
 
+  const renameLocation = (zone: string) => {
+    const existing = selectedLocationEntries.find((location) => location.ianaTimeZone === zone)
+    if (!existing) return
+    const nextName = window.prompt('Rename location', favoritesName[zone] ?? existing.city)
+    if (!nextName) return
+    setFavoritesName((previous) => ({ ...previous, [zone]: nextName.trim() }))
+  }
+
+  const configureWorkingHours = (zone: string) => {
+    const current = workingByZone[zone] ?? globalWorking
+    const next = window.prompt('Working hours in HH:MM-HH:MM', `${String(Math.floor(current.start / 60)).padStart(2, '0')}:${String(current.start % 60).padStart(2, '0')}-${String(Math.floor(current.end / 60)).padStart(2, '0')}:${String(current.end % 60).padStart(2, '0')}`)
+    if (!next) return
+    const match = next.match(/^(\\d{2}:\\d{2})-(\\d{2}:\\d{2})$/)
+    if (!match) return
+    setWorkingByZone((previous) => ({ ...previous, [zone]: { start: parseHourMinute(match[1]), end: parseHourMinute(match[2]) } }))
+  }
+
   const nowUtc = now.toUTC()
   const localNow = now
 
@@ -544,6 +556,8 @@ function App() {
                     <div className="mt-2 flex flex-wrap gap-1 text-[11px]">
                       <button type="button" onClick={() => reorder(location.ianaTimeZone, 'up')} className="rounded bg-slate-900/10 px-2 py-1">↑</button>
                       <button type="button" onClick={() => reorder(location.ianaTimeZone, 'down')} className="rounded bg-slate-900/10 px-2 py-1">↓</button>
+                      <button type="button" onClick={() => renameLocation(location.ianaTimeZone)} className="rounded bg-slate-900/10 px-2 py-1">Rename</button>
+                      <button type="button" onClick={() => configureWorkingHours(location.ianaTimeZone)} className="rounded bg-slate-900/10 px-2 py-1">Hours</button>
                       <button type="button" onClick={() => removeLocation(location.ianaTimeZone)} className="rounded bg-rose-500/15 px-2 py-1 text-rose-700 dark:text-rose-300">Remove</button>
                     </div>
                   </button>
